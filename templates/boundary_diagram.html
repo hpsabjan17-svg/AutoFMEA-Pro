@@ -1,0 +1,695 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container">
+
+    <h1>Boundary Diagram</h1>
+
+    <p>
+        Identify external elements, interfaces and interactions
+        surrounding the product under analysis.
+    </p>
+
+    <hr>
+
+    <h2>Add Boundary Element</h2>
+
+    <form method="POST">
+
+        <label for="project_id">Select Project</label>
+
+        <select id="project_id" name="project_id" required>
+
+            <option value="">Select Project</option>
+
+            {% for project in projects %}
+
+            <option value="{{ project.id }}">
+
+                {{ project.project_name }}
+
+                {% if project.product_name %}
+                    — {{ project.product_name }}
+                {% endif %}
+
+            </option>
+
+            {% endfor %}
+
+        </select>
+
+        <br><br>
+
+
+        <label for="external_element">
+            External Element
+        </label>
+
+        <input
+            id="external_element"
+            type="text"
+            name="external_element"
+            placeholder="e.g. HVAC System, Battery, Driver, ECU"
+            required
+        >
+
+        <br><br>
+
+
+        <label for="interaction">
+            Interaction / Interface
+        </label>
+
+        <input
+            id="interaction"
+            type="text"
+            name="interaction"
+            placeholder="e.g. Air flow, Electrical signal, Mechanical load"
+            required
+        >
+
+        <br><br>
+
+
+        <label for="direction">
+            Direction
+        </label>
+
+        <select
+            id="direction"
+            name="direction"
+            required
+        >
+
+            <option value="">
+                Select Direction
+            </option>
+
+            <option value="Input">
+                Input
+            </option>
+
+            <option value="Output">
+                Output
+            </option>
+
+            <option value="Bidirectional">
+                Bidirectional
+            </option>
+
+        </select>
+
+        <br><br>
+
+
+        <label for="description">
+            Interface Description
+        </label>
+
+        <textarea
+            id="description"
+            name="description"
+            placeholder="Describe the interface, signal, energy, material or information exchange"
+        ></textarea>
+
+        <br><br>
+
+
+        <button type="submit">
+            + Add Boundary Element
+        </button>
+
+    </form>
+
+
+    <hr>
+
+
+    <!-- =====================================================
+         FREE-HAND BOUNDARY DIAGRAM
+    ====================================================== -->
+
+    <h2>Boundary Diagram Workspace</h2>
+
+    <p>
+        Add boxes and move them freely around the workspace.
+    </p>
+
+
+    <div class="boundary-toolbar">
+
+        <button type="button" id="addBoxBtn">
+            + Add Box
+        </button>
+
+        <button type="button" id="connectBtn">
+            🔗 Connect
+        </button>
+
+        <button type="button" id="deleteBoxBtn">
+            🗑 Delete Box
+        </button>
+
+        <button type="button" id="clearBtn">
+            Clear Diagram
+        </button>
+
+    </div>
+
+
+    <div
+        id="diagramCanvas"
+        style="
+            position:relative;
+            width:100%;
+            min-height:600px;
+            margin-top:20px;
+            border:2px dashed #9aa7b5;
+            border-radius:12px;
+            background:#f7f9fc;
+            overflow:hidden;
+        "
+    >
+
+        <div
+            class="diagram-box"
+            data-fixed="true"
+            style="
+                position:absolute;
+                left:42%;
+                top:42%;
+                width:180px;
+                padding:20px;
+                text-align:center;
+                border:2px solid #333;
+                border-radius:10px;
+                background:white;
+                font-weight:bold;
+            "
+        >
+            Product / System
+        </div>
+
+    </div>
+
+
+    <hr>
+
+
+    <!-- =====================================================
+         RECORDS
+    ====================================================== -->
+
+    <h2>Boundary Diagram Records</h2>
+
+    {% if boundaries %}
+
+    <div style="overflow-x:auto;">
+
+        <table>
+
+            <thead>
+
+                <tr>
+
+                    <th>Project</th>
+                    <th>External Element</th>
+                    <th>Interaction</th>
+                    <th>Direction</th>
+                    <th>Description</th>
+                    <th>Action</th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody>
+
+                {% for boundary in boundaries %}
+
+                <tr>
+
+                    <td>
+                        <strong>
+                            {{ boundary.project_name or "—" }}
+                        </strong>
+                    </td>
+
+                    <td>
+                        {{ boundary.external_element }}
+                    </td>
+
+                    <td>
+                        {{ boundary.interaction or "—" }}
+                    </td>
+
+                    <td>
+                        {{ boundary.direction or "—" }}
+                    </td>
+
+                    <td>
+                        {{ boundary.description or "—" }}
+                    </td>
+
+                    <td>
+
+                        <button
+                            type="button"
+                            class="edit-boundary-btn"
+                            data-id="{{ boundary.id }}"
+                            data-external="{{ boundary.external_element|e }}"
+                            data-interaction="{{ boundary.interaction|e }}"
+                            data-direction="{{ boundary.direction|e }}"
+                            data-description="{{ boundary.description|e }}"
+                        >
+                            ✏️ Edit
+                        </button>
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+    {% else %}
+
+    <p>
+        No boundary elements have been added yet.
+    </p>
+
+    {% endif %}
+
+</div>
+
+
+<script>
+
+/* =========================================================
+   BOUNDARY DIAGRAM
+========================================================= */
+
+const canvas =
+    document.getElementById("diagramCanvas");
+
+let selectedBox = null;
+let boxCounter = 0;
+
+
+/* =========================================================
+   SELECT BOX
+========================================================= */
+
+function selectBox(box) {
+
+    if (selectedBox) {
+        selectedBox.style.outline = "none";
+    }
+
+    selectedBox = box;
+
+    box.style.outline =
+        "3px solid #2f75b5";
+}
+
+
+/* =========================================================
+   MAKE BOX DRAGGABLE
+========================================================= */
+
+function makeDraggable(box) {
+
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+
+    box.addEventListener(
+        "mousedown",
+        function(event) {
+
+            if (box.dataset.fixed === "true") {
+                return;
+            }
+
+            dragging = true;
+
+            selectBox(box);
+
+            const rect =
+                box.getBoundingClientRect();
+
+            offsetX =
+                event.clientX - rect.left;
+
+            offsetY =
+                event.clientY - rect.top;
+
+            event.preventDefault();
+        }
+    );
+
+
+    document.addEventListener(
+        "mousemove",
+        function(event) {
+
+            if (!dragging) {
+                return;
+            }
+
+            const canvasRect =
+                canvas.getBoundingClientRect();
+
+            let x =
+                event.clientX -
+                canvasRect.left -
+                offsetX;
+
+            let y =
+                event.clientY -
+                canvasRect.top -
+                offsetY;
+
+
+            x = Math.max(
+                0,
+                Math.min(
+                    x,
+                    canvas.clientWidth -
+                    box.offsetWidth
+                )
+            );
+
+
+            y = Math.max(
+                0,
+                Math.min(
+                    y,
+                    canvas.clientHeight -
+                    box.offsetHeight
+                )
+            );
+
+
+            box.style.left =
+                x + "px";
+
+            box.style.top =
+                y + "px";
+        }
+    );
+
+
+    document.addEventListener(
+        "mouseup",
+        function() {
+            dragging = false;
+        }
+    );
+
+
+    box.addEventListener(
+        "click",
+        function(event) {
+
+            event.stopPropagation();
+
+            selectBox(box);
+        }
+    );
+}
+
+
+/* =========================================================
+   ADD BOX
+========================================================= */
+
+document
+    .getElementById("addBoxBtn")
+    .addEventListener(
+        "click",
+        function() {
+
+            boxCounter++;
+
+            const box =
+                document.createElement("div");
+
+            box.className =
+                "diagram-box";
+
+            box.textContent =
+                "External Element " +
+                boxCounter;
+
+            box.contentEditable =
+                "true";
+
+
+            box.style.position =
+                "absolute";
+
+            box.style.left =
+                (50 + boxCounter * 20) +
+                "px";
+
+            box.style.top =
+                (50 + boxCounter * 20) +
+                "px";
+
+            box.style.width =
+                "160px";
+
+            box.style.padding =
+                "15px";
+
+            box.style.background =
+                "white";
+
+            box.style.border =
+                "2px solid #333";
+
+            box.style.borderRadius =
+                "10px";
+
+            box.style.cursor =
+                "move";
+
+            box.style.textAlign =
+                "center";
+
+            box.style.zIndex =
+                "10";
+
+
+            canvas.appendChild(box);
+
+            makeDraggable(box);
+
+            selectBox(box);
+        }
+    );
+
+
+/* =========================================================
+   DELETE BOX
+========================================================= */
+
+document
+    .getElementById("deleteBoxBtn")
+    .addEventListener(
+        "click",
+        function() {
+
+            if (!selectedBox) {
+
+                alert(
+                    "Please select a box first."
+                );
+
+                return;
+            }
+
+
+            if (
+                selectedBox.dataset.fixed ===
+                "true"
+            ) {
+
+                alert(
+                    "Product / System cannot be deleted."
+                );
+
+                return;
+            }
+
+
+            selectedBox.remove();
+
+            selectedBox = null;
+        }
+    );
+
+
+/* =========================================================
+   CLEAR DIAGRAM
+========================================================= */
+
+document
+    .getElementById("clearBtn")
+    .addEventListener(
+        "click",
+        function() {
+
+            const boxes =
+                canvas.querySelectorAll(
+                    ".diagram-box"
+                );
+
+
+            boxes.forEach(
+                function(box) {
+
+                    if (
+                        box.dataset.fixed !==
+                        "true"
+                    ) {
+                        box.remove();
+                    }
+
+                }
+            );
+
+
+            selectedBox = null;
+        }
+    );
+
+
+/* =========================================================
+   CONNECT
+========================================================= */
+
+document
+    .getElementById("connectBtn")
+    .addEventListener(
+        "click",
+        function() {
+
+            alert(
+                "Select two boxes to create a connection. Connection saving will be added in the next step."
+            );
+
+        }
+    );
+
+
+/* =========================================================
+   EDIT EXISTING RECORD
+========================================================= */
+
+const editButtons =
+    document.querySelectorAll(
+        ".edit-boundary-btn"
+    );
+
+
+editButtons.forEach(
+    function(button) {
+
+        button.addEventListener(
+            "click",
+            function() {
+
+                document.getElementById(
+                    "external_element"
+                ).value =
+                    button.dataset.external;
+
+
+                document.getElementById(
+                    "interaction"
+                ).value =
+                    button.dataset.interaction;
+
+
+                document.getElementById(
+                    "direction"
+                ).value =
+                    button.dataset.direction;
+
+
+                document.getElementById(
+                    "description"
+                ).value =
+                    button.dataset.description;
+
+
+                window.scrollTo({
+                    top: 0,
+                    behavior: "smooth"
+                });
+
+            }
+        );
+
+    }
+);
+
+
+/* =========================================================
+   CANVAS CLICK
+========================================================= */
+
+canvas.addEventListener(
+    "click",
+    function() {
+
+        if (selectedBox) {
+
+            selectedBox.style.outline =
+                "none";
+
+            selectedBox = null;
+        }
+
+    }
+);
+
+
+/* =========================================================
+   PRODUCT BOX
+========================================================= */
+
+const productBox =
+    canvas.querySelector(
+        '[data-fixed="true"]'
+    );
+
+
+if (productBox) {
+
+    productBox.addEventListener(
+        "click",
+        function(event) {
+
+            event.stopPropagation();
+
+            selectBox(productBox);
+
+        }
+    );
+
+}
+
+</script>
+
+{% endblock %}
